@@ -1,12 +1,10 @@
-> **DRAFT** — hapus kotak ini sebelum dijadikan PDF. Semua angka benchmark berasal dari eksekusi
-> notebook di Google Colab (`hasil/*.csv`). Angka "uji pendukung" (subbab 3.2 dan 3.4) berasal dari
-> komputer anggota kelompok dan ditandai jelas. Bagian bertanda **[ISI]** perlu dilengkapi.
-
 # Laporan Tugas 2
 ## Implementasi Pipeline Pemrosesan Batch dengan Hadoop MapReduce dan Apache Spark
 
+![Logo Universitas AMIKOM Yogyakarta](logo-amikom.png)
+
 **Mata Kuliah:** Pemrosesan Data Terdistribusi / Big Data Analytics
-**Dosen Pengampu:** [ISI]
+**Dosen Pengampu:** Hanafi, S.Kom., M.Eng., Ph.D.
 **Kelompok 21**
 
 | No | Nama | NIM |
@@ -16,394 +14,324 @@
 | 3 | Bujur Depoin Sianipar | 25.55.2879 |
 | 4 | Riyan Pratomo Saputra | 25.55.2857 |
 
-**Tanggal:** [ISI]
+**Universitas AMIKOM Yogyakarta**
+**Oktober 2026**
 
 ---
 
 ## Bab 1. Pendahuluan
 
-### 1.1 Latar Belakang dan Tujuan
+### 1.1 Tujuan Eksperimen
 
-Pemrosesan *batch* merupakan fondasi analisis data berukuran besar secara terdistribusi. Hadoop
-MapReduce memperkenalkan model komputasi dua tahap (Map dan Reduce) yang menyimpan hasil antara di
-disk, sedangkan Apache Spark menyusun pekerjaan sebagai *Directed Acyclic Graph* (DAG) dan
-mengutamakan pemrosesan di memori.
+Hadoop MapReduce dan Apache Spark sama-sama dipakai untuk mengolah data dalam jumlah besar
+sekaligus (*batch processing*). Perbedaan utamanya: MapReduce menyimpan hasil setiap tahap ke
+**disk**, sedangkan Spark sebisa mungkin menyimpannya di **memori (RAM)**.
 
-Eksperimen ini bertujuan membandingkan kedua kerangka kerja secara kuantitatif dan kualitatif,
-yaitu: (1) mengimplementasikan pipeline yang sama dengan tiga pendekatan — MapReduce (mrjob),
-Spark RDD API, dan Spark DataFrame API; (2) membuktikan bahwa ketiganya menghasilkan output
-identik; (3) mengukur waktu eksekusi, penggunaan CPU, dan RAM; serta (4) menjelaskan penyebab
-perbedaan performa dari sisi arsitektur masing-masing kerangka kerja.
+Dalam eksperimen ini kami mengolah data yang sama dengan tiga cara: **MapReduce** (memakai
+library mrjob), **Spark RDD**, dan **Spark DataFrame**. Tujuannya:
+
+1. membuktikan ketiga cara memberi jawaban yang sama;
+2. mengukur waktu, pemakaian CPU, dan pemakaian RAM masing-masing;
+3. menjelaskan mengapa hasilnya berbeda.
 
 ### 1.2 Arsitektur Data
 
-Dalam arsitektur Big Data yang umumnya berlapis (sumber data → *ingestion* → *storage* →
-*processing* → *serving*), eksperimen ini berfokus pada **lapisan processing jalur batch**.
-Alur data yang diimplementasikan:
+Sistem Big Data biasanya terdiri dari beberapa lapisan: sumber data, pengumpulan, penyimpanan,
+pengolahan, dan penyajian. Eksperimen ini berfokus pada **lapisan pengolahan** (*processing*).
 
-```
- Sumber data            Ingestion            Storage                 Processing (3 pendekatan)          Serving
- ───────────            ─────────            ───────                 ─────────────────────────          ───────
- Log server NASA  ──►  unduh .gz dari  ──►  1 berkas teks     ──┬──► MapReduce (mrjob, runner local) ──┐
- (Jul + Agu 1995)      arsip LBL,           356 MB di disk      ├──► Spark RDD API      (local[*])   ──┼──► tabel, grafik,
-                       ekstrak,             lokal Colab         └──► Spark DataFrame API (local[*])   ──┘    berkas CSV
-                       normalisasi          (pengganti HDFS)
-```
+![Arsitektur data](gambar/arsitektur-data.svg)
 
-Seluruh pemrosesan berjalan di **satu mesin Google Colab**. Paralelisme berasal dari beberapa inti
-CPU, bukan dari beberapa komputer, sehingga eksperimen ini merupakan **simulasi pemrosesan
-terdistribusi di satu mesin**. Tidak ada HDFS, YARN, maupun lalu lintas jaringan antar-node.
-Konsekuensinya dibahas di subbab 3.7.
+*Gambar 1.1 — Alur data dalam eksperimen. Kotak biru adalah lapisan yang dibandingkan.*
+
+Semua proses berjalan di **satu komputer** (Google Colab dengan 2 inti CPU), bukan di banyak
+komputer. Pekerjaan memang dibagi ke beberapa "pekerja", tetapi semua pekerja itu berada di mesin
+yang sama. Jadi eksperimen ini adalah **simulasi** pengolahan terdistribusi.
 
 ### 1.3 Dataset
 
-Dataset yang digunakan adalah **NASA HTTP Access Logs** dari *Internet Traffic Archive* (LBL):
-log server web NASA Kennedy Space Center periode 1 Juli – 31 Agustus 1995. Setelah digabung,
-berkas berukuran **355,8 MB** (373 juta byte) dengan **3.461.613 baris**. Setiap baris mengikuti
-*Common Log Format*:
+Kami memakai **NASA HTTP Access Logs**, yaitu catatan setiap kunjungan ke situs web NASA selama
+Juli–Agustus 1995. Ukurannya **356 MB** dengan **3.461.613 baris**. Satu baris berisi satu
+kunjungan (*request*):
 
 ```
 199.72.81.55 - - [01/Jul/1995:00:00:01 -0400] "GET /history/apollo/ HTTP/1.0" 200 6245
-   host                 waktu                      request                  status bytes
+   pengunjung            waktu                      halaman yang diminta     status ukuran
 ```
 
-Persiapan data yang dilakukan:
+Sebelum diolah, data dibersihkan:
 
-- **Normalisasi karakter.** 18 baris memuat byte non-ASCII atau karakter kontrol. Karena regex
-  Python (mrjob, RDD) dan regex Java (DataFrame) memaknai karakter tersebut sedikit berbeda, setiap
-  byte di luar ASCII yang dapat dicetak diganti dengan `?` agar ketiga pendekatan membaca teks yang
-  persis sama.
-- **Parser bersama.** Satu pola regex dipakai oleh ketiga pendekatan untuk mengambil host, jam,
-  status, dan bytes. Bagian request memakai `".*"` (*greedy*) karena 33 baris memuat tanda kutip di
-  dalam URL. Hanya **1 baris** yang tidak valid (terpotong: `alyssa.p`) dan dibuang secara
-  konsisten, sehingga tersisa **3.461.612 request valid** — sama dengan jumlah yang dilaporkan
-  sumber dataset.
-- Nilai bytes `-` (tidak ada data yang dikirim) dianggap 0.
+- 18 baris mengandung karakter aneh. Karakter itu diganti dengan `?` agar ketiga cara membaca
+  teks yang sama persis.
+- Hanya **1 baris** yang rusak (terpotong) sehingga dibuang. Tersisa **3.461.612 request** yang
+  valid.
 
-### 1.4 Desain Eksperimen
+### 1.4 Cara Eksperimen
 
-**Tiga analisis batch** sesuai studi kasus Log Web Server:
+**Tiga pertanyaan** yang dijawab dari data:
 
-| Kode | Analisis | Key → value | Jumlah key |
-|---|---|---|---|
-| `host` | Jumlah request per host | host → 1, dijumlah | 137.978 |
-| `status` | Distribusi HTTP status code | status → 1, dijumlah | 8 |
-| `hour` | Total traffic per jam-dalam-sehari | jam → bytes, dijumlah | 24 |
+| Kode | Pertanyaan | Jumlah kelompok jawaban |
+|---|---|---|
+| `host` | Siapa yang paling sering mengakses? (jumlah request per pengunjung) | 137.978 pengunjung |
+| `status` | Berapa request yang berhasil dan yang gagal? (jumlah per kode status) | 8 kode |
+| `hour` | Jam berapa server paling sibuk? (total data yang dikirim per jam) | 24 jam |
 
-**Empat pendekatan:** MapReduce tanpa combiner (sesuai contoh kode spesifikasi), MapReduce dengan
-combiner, Spark RDD, dan Spark DataFrame.
+**Empat cara pengolahan:** MapReduce, MapReduce dengan *combiner* (penjelasan di 3.2), Spark RDD,
+dan Spark DataFrame.
 
 **Dua skenario:**
-1. *Per analisis* — setiap analisis dijalankan terpisah; setiap pendekatan membaca berkas dari awal.
-2. *Tiga analisis sekaligus* — ketiga analisis dijalankan berurutan pada dataset yang sama, untuk
-   Spark dengan dan tanpa `cache()`.
+1. Setiap pertanyaan dijawab **terpisah**.
+2. Ketiga pertanyaan dijawab **sekaligus** dari data yang sama. Untuk Spark, dicoba dengan dan tanpa
+   *cache* (penjelasan di 3.1).
 
-**Metrik dan metodologi:**
-- Waktu eksekusi (*wall-clock*, `time.perf_counter()`), CPU % (waktu CPU ÷ waktu eksekusi, dapat
-  melebihi 100% pada mesin multi-inti), dan RAM puncak (RSS).
-- Pengukuran mencakup proses notebook **beserta seluruh proses anaknya** (JVM Spark, Python worker,
-  subproses mrjob), diambil setiap 0,1 detik. Untuk MapReduce, proses JVM Spark yang sedang
-  menganggur dikecualikan agar tidak terhitung sebagai milik mrjob.
-- Sebelum pengukuran, setiap pendekatan dijalankan sekali sebagai **pemanasan** (sekaligus validasi
-  output); hasil pemanasan tidak dimasukkan. Setiap pengukuran diulang **3 kali** lalu dirata-rata.
-- Waktu menyalakan SparkSession dicatat terpisah karena hanya terjadi sekali.
+**Yang diukur:** waktu (detik), CPU (%), dan RAM tertinggi (MB). Pengukuran mencakup semua
+program yang ikut berjalan, termasuk Java yang dipakai Spark. Setiap pengukuran **diulang 3 kali**
+lalu dirata-rata. Sebelumnya setiap cara dijalankan sekali sebagai pemanasan, dan hasil pemanasan
+tidak dihitung.
 
-**Lingkungan:** Google Colab — 2 inti CPU (logical), RAM 12,7 GB, Python 3.13.16, PySpark 4.0.4,
-Java OpenJDK 17, mrjob 0.7.4. Spesifikasi meminta Java 8, tetapi PySpark 4.x membutuhkan Java 17
-atau lebih baru, sehingga digunakan Java 17.
+**Lingkungan:** Google Colab, 2 inti CPU, RAM 12,7 GB, Python 3.13, Spark 4.0.4, Java 17,
+mrjob 0.7.4. (Spesifikasi menyebut Java 8, tetapi Spark versi 4 hanya bisa berjalan dengan Java 17
+ke atas.)
 
 ---
 
 ## Bab 2. Hasil dan Benchmarking
 
-### 2.1 Validasi Output
+### 2.1 Bukti Jawaban Sama
 
-Ketiga pendekatan (empat varian) menghasilkan output **identik** untuk ketiga analisis, dibuktikan
-dengan perbandingan otomatis key demi key di notebook (bagian 7):
+Notebook membandingkan jawaban keempat cara **baris demi baris**. Hasilnya, semuanya sama persis:
 
-| Analisis | Jumlah key | Total value | MapReduce | MR + combiner | Spark RDD | Spark DataFrame |
-|---|---|---|---|---|---|---|
-| host | 137.978 | 3.461.612 request | ✓ | ✓ | ✓ | ✓ |
-| status | 8 | 3.461.612 request | ✓ | ✓ | ✓ | ✓ |
-| hour | 24 | 65.524.314.915 byte | ✓ | ✓ | ✓ | ✓ |
+| Pertanyaan | Jumlah baris jawaban | Total | Keempat cara sama? |
+|---|---|---|---|
+| host | 137.978 | 3.461.612 request | ✓ |
+| status | 8 | 3.461.612 request | ✓ |
+| hour | 24 | 65.524.314.915 byte (±61 GB) | ✓ |
 
-### 2.2 Skenario 1: Setiap Analisis Dijalankan Terpisah
+Jadi perbedaan kecepatan di bawah bukan karena salah satu cara menghitung lebih sedikit.
 
-Tabel 2.1 — Rata-rata 3 ulangan (± simpangan baku). CPU maksimum teoretis 200% (2 inti).
+### 2.2 Skenario 1: Setiap Pertanyaan Dijawab Terpisah
 
-| Analisis | Pendekatan | Waktu (detik) | CPU (%) | RAM puncak (MB) |
-|---|---|---|---|---|
-| host | MapReduce | 65,20 ± 1,28 | 154 | 888 |
-| | MapReduce + combiner | 68,17 ± 2,93 | 154 | 953 |
-| | Spark RDD | 20,60 ± 1,03 | 167 | 1.476 |
-| | Spark DataFrame | **17,90 ± 1,41** | 152 | 1.781 |
-| status | MapReduce | 66,19 ± 2,21 | 149 | 903 |
-| | MapReduce + combiner | 68,83 ± 3,84 | 157 | 941 |
-| | Spark RDD | 19,15 ± 0,91 | 164 | 1.494 |
-| | Spark DataFrame | **15,99 ± 0,72** | 153 | 1.644 |
-| hour | MapReduce | 69,62 ± 2,16 | 156 | 901 |
-| | MapReduce + combiner | 69,86 ± 4,70 | 157 | 940 |
-| | Spark RDD | **19,80 ± 0,54** | 165 | 1.249 |
-| | Spark DataFrame | 31,19 ± 0,53 | 155 | 1.458 |
+Tabel 2.1 — Rata-rata dari 3 kali percobaan. CPU paling tinggi 200% karena ada 2 inti.
+
+| Pertanyaan | Cara | Waktu (detik) | Lebih cepat dari MapReduce | CPU (%) | RAM tertinggi (MB) |
+|---|---|---|---|---|---|
+| host | MapReduce | 65,2 | – | 154 | 888 |
+| | MapReduce + combiner | 68,2 | 0,96× | 154 | 953 |
+| | Spark RDD | 20,6 | 3,2× | 167 | 1.476 |
+| | Spark DataFrame | **17,9** | **3,6×** | 152 | 1.781 |
+| status | MapReduce | 66,2 | – | 149 | 903 |
+| | MapReduce + combiner | 68,8 | 0,96× | 157 | 941 |
+| | Spark RDD | 19,2 | 3,5× | 164 | 1.494 |
+| | Spark DataFrame | **16,0** | **4,1×** | 153 | 1.644 |
+| hour | MapReduce | 69,6 | – | 156 | 901 |
+| | MapReduce + combiner | 69,9 | 1,00× | 157 | 940 |
+| | Spark RDD | **19,8** | **3,5×** | 165 | 1.249 |
+| | Spark DataFrame | 31,2 | 2,2× | 155 | 1.458 |
 
 ![Skenario 1](hasil/skenario1.png)
 
-*Gambar 2.1 — Waktu eksekusi, CPU, dan RAM puncak skenario 1.*
+*Gambar 2.1 — Waktu, CPU, dan RAM pada skenario 1. Garis kecil di atas batang menunjukkan seberapa
+jauh hasil 3 percobaan berbeda satu sama lain.*
 
-Tabel 2.2 — Kecepatan relatif terhadap MapReduce tanpa combiner (nilai > 1 = lebih cepat).
+Selain itu, **menyalakan Spark** butuh **26,1 detik**. Ini hanya terjadi sekali di awal dan tidak
+dimasukkan ke tabel.
 
-| Analisis | MR + combiner | Spark RDD | Spark DataFrame |
+### 2.3 Skenario 2: Ketiga Pertanyaan Dijawab Sekaligus
+
+Tabel 2.2 — Rata-rata dari 3 kali percobaan.
+
+| Cara | Waktu (detik) | Lebih cepat dari MapReduce | RAM tertinggi (MB) |
 |---|---|---|---|
-| host | 0,96× | 3,16× | **3,64×** |
-| status | 0,96× | 3,46× | **4,14×** |
-| hour | 1,00× | **3,52×** | 2,23× |
-
-Waktu menyalakan SparkSession (JVM + konteks Spark) adalah **26,13 detik**, terjadi sekali di awal
-dan tidak termasuk dalam tabel di atas.
-
-### 2.3 Skenario 2: Tiga Analisis Sekaligus
-
-Tabel 2.3 — Rata-rata 3 ulangan.
-
-| Pendekatan | Waktu (detik) | CPU (%) | RAM puncak (MB) | Kecepatan relatif |
-|---|---|---|---|---|
-| MapReduce (3 job) | 203,74 ± 5,20 | 152 | 897 | 1,00× |
-| MapReduce + combiner (3 job) | 202,07 ± 4,33 | 158 | 959 | 1,01× |
-| Spark RDD tanpa cache | 58,19 ± 1,51 | 164 | 1.480 | 3,50× |
-| Spark RDD + cache | **34,38 ± 1,29** | 163 | 1.634 | **5,93×** |
-| Spark DataFrame tanpa cache | 65,95 ± 4,28 | 151 | 1.977 | 3,09× |
-| Spark DataFrame + cache | 57,74 ± 2,27 | 153 | 1.714 | 3,53× |
+| MapReduce (3 job) | 203,7 | – | 897 |
+| MapReduce + combiner (3 job) | 202,1 | 1,0× | 959 |
+| Spark RDD tanpa cache | 58,2 | 3,5× | 1.480 |
+| Spark RDD + cache | **34,4** | **5,9×** | 1.634 |
+| Spark DataFrame tanpa cache | 66,0 | 3,1× | 1.977 |
+| Spark DataFrame + cache | 57,7 | 3,5× | 1.714 |
 
 ![Skenario 2](hasil/skenario2.png)
 
-*Gambar 2.2 — Skenario 2: pengaruh caching pada tiga analisis sekaligus.*
+*Gambar 2.2 — Skenario 2: pengaruh cache.*
 
-### 2.4 Hasil Analisis Data
+### 2.4 Jawaban Ketiga Pertanyaan
 
-- **Request per host:** terdapat 137.978 host unik. Host teratas adalah `piweba3y.prodigy.com`
-  (21.988 request), disusul `piweba4y.prodigy.com` (16.437) dan `piweba1y.prodigy.com` (12.825) —
-  ketiganya server *proxy* penyedia layanan Prodigy, sehingga mewakili banyak pengguna sekaligus.
-- **Status code:** 89,57% request berhasil (200), 7,71% *not modified* (304), 2,11% *redirect*
-  (302), 0,60% *not found* (404), dan hanya 65 request (0,002%) *server error* (500).
-- **Traffic per jam:** total 65,5 miliar byte (±61 GB). Jam tersibuk adalah **13.00–13.59**
-  (±4.066 MB) dengan rentang jam 12–16 hampir sama padatnya; jam tersepi **05.00–05.59**
-  (±1.132 MB), sekitar 3,6 kali lebih rendah (waktu server, UTC−4).
+- **Pengunjung terbanyak:** `piweba3y.prodigy.com` dengan 21.988 request. Tiga teratas adalah
+  server milik penyedia internet Prodigy, yang dipakai bersama oleh banyak pelanggannya.
+- **Status:** 89,6% request **berhasil** (kode 200), 7,7% memakai salinan yang sudah ada di browser
+  (304), 0,6% **halaman tidak ditemukan** (404), dan hanya 65 request yang **error di server** (500).
+- **Jam tersibuk:** **13.00–13.59** (±4.066 MB). Jam 12.00–16.59 hampir sama sibuknya. Jam
+  tersepi adalah 05.00–05.59 (±1.132 MB), sekitar 3,6 kali lebih sepi.
 
 ![Hasil analisis data](hasil/hasil_analisis.png)
 
-*Gambar 2.3 — 10 host teratas, distribusi status code (skala log), dan traffic per jam.*
+*Gambar 2.3 — Pengunjung terbanyak, sebaran kode status, dan traffic per jam.*
 
 ---
 
 ## Bab 3. Analisis Komparatif
 
-### 3.1 I/O Disk vs Eksekusi di Memori
+### 3.1 Disk vs Memori (I/O Disk vs In-Memory)
 
-Pada skenario 1, Spark 2,2–4,1 kali lebih cepat daripada MapReduce. Perbedaan alur data menjadi
-penyebab utamanya:
+**Intinya:** Spark lebih cepat karena lebih sedikit membaca dan menulis disk.
 
-- **MapReduce (mrjob runner `local`)** menjalankan mapper sebagai subproses Python yang menulis
-  setiap pasangan key-value ke **berkas antara di disk**, mengurutkannya, lalu reducer membaca
-  kembali berkas tersebut. Setiap pasangan juga diubah ke teks JSON saat ditulis dan diurai kembali
-  saat dibaca.
-- **Spark** menjalankan langkah-langkah yang tidak memerlukan shuffle (baca → saring → ekstrak →
-  agregasi parsial) secara **berantai di memori** (*pipelining*) di dalam satu *stage*, tanpa
-  menyimpan hasil antara. Data baru ditulis ke disk lokal saat shuffle, dan saat itu volumenya
-  sudah sangat kecil karena telah diagregasi sebagian.
+*I/O disk* adalah kegiatan membaca dan menulis data ke disk. Kegiatan ini jauh lebih lambat
+daripada mengakses memori.
 
-Keunggulan memori paling jelas terlihat pada **skenario 2**. MapReduce membutuhkan 203,7 detik,
-hampir tepat 3 kali waktu satu job (±67 detik), karena setiap job membaca dan mem-parsing ulang
-berkas 356 MB dari disk. Spark tanpa cache mengalami hal serupa (58,2 detik, mendekati 3 × 19,9 detik)
-karena setiap *action* menjalankan ulang DAG dari awal. Dengan `cache()`, Spark RDD hanya
-membutuhkan **34,4 detik (1,69 kali lebih cepat)**: data hasil parsing disimpan di memori pada
-action pertama, sehingga dua analisis berikutnya tidak perlu membaca dan mem-parsing berkas lagi.
-Jika action pertama memakan ±20 detik seperti di skenario 1, dua action berikutnya hanya ±7 detik
-masing-masing.
+- **MapReduce** menyimpan hasil setiap tahap ke berkas di disk, lalu tahap berikutnya membaca
+  berkas itu lagi. Bayangkan seseorang yang setiap selesai satu langkah menulis hasilnya di kertas,
+  lalu membaca kertas itu sebelum langkah berikutnya.
+- **Spark** meneruskan hasil dari satu langkah ke langkah berikutnya langsung di memori, tanpa
+  mencatatnya dulu. Cara ini disebut *pipelining*.
 
-Pada DataFrame, cache hanya mempercepat 1,14 kali (66,0 → 57,7 detik). Penyebabnya, sebagian besar
-biaya DataFrame dalam implementasi ini terletak pada evaluasi regex di tahap ekstraksi (lihat
-subbab 3.4), dan sebagian evaluasi itu tetap terjadi saat data pertama kali dimasukkan ke cache.
+Akibatnya, pada skenario 1 Spark **2,2–4,1 kali lebih cepat** daripada MapReduce.
 
-### 3.2 Biaya Shuffle dan Peran Combiner
+**Cache** memperlihatkan keunggulan memori dengan lebih jelas. *Cache* artinya menyimpan data yang
+sudah diolah di memori agar bisa dipakai lagi tanpa diolah ulang.
 
-Shuffle adalah tahap mengumpulkan semua pasangan dengan key yang sama ke reducer yang sama. Tanpa
-combiner, seluruh 3.461.612 pasangan `(key, nilai)` harus melewati tahap ini. *Combiner* menjumlah
-sebagian di sisi map sebelum shuffle; pada analisis `status` yang hanya memiliki 8 key, jumlah
-pasangan yang di-shuffle turun dari jutaan menjadi beberapa puluh saja.
+- Pada skenario 2, MapReduce butuh **203,7 detik**, kira-kira 3 kali waktu satu pertanyaan. Ini
+  karena untuk setiap pertanyaan, berkas 356 MB dibaca dan dipotong-potong lagi dari awal.
+- Spark **tanpa cache** juga mengulang dari awal untuk setiap pertanyaan (58,2 detik).
+- Spark RDD **dengan cache** hanya butuh **34,4 detik**, 1,7 kali lebih cepat daripada tanpa cache.
+  Berkas cukup diolah sekali, lalu pertanyaan kedua dan ketiga memakai data yang sudah ada di memori.
+- Pada Spark DataFrame, cache hanya sedikit membantu (66,0 → 57,7 detik). Penyebabnya dijelaskan
+  di 3.4.
 
-Namun hasil di Colab menunjukkan combiner **tidak mempercepat** MapReduce (0,96–1,00 kali).
-Selisihnya (±1–3 detik) masih berada dalam rentang simpangan baku (hingga 4,7 detik), sehingga
-dapat dianggap tidak berbeda.
+### 3.2 Shuffle dan Combiner
 
-Untuk mencari penyebabnya, dilakukan **uji pendukung** di komputer anggota kelompok (8 inti,
-mrjob dibatasi 2 inti agar menyerupai Colab; angka absolut berbeda dari Colab, yang dibandingkan
-adalah proporsinya):
+**Intinya:** combiner seharusnya mempercepat shuffle, tetapi di eksperimen ini hampir tidak
+berpengaruh.
 
-| Uji pendukung (komputer anggota) | Waktu |
-|---|---|
-| Membaca seluruh berkas saja (1 proses Python) | 0,3 s |
-| Membaca + mem-parsing seluruh baris dengan regex (1 proses Python) | 4,3 s |
-| Job mrjob `host`, tanpa / dengan combiner (2 inti) | 17,9 s / 16,4 s |
-| Job mrjob `status`, tanpa / dengan combiner (2 inti) | 19,4 s / 16,5 s |
+*Shuffle* adalah tahap mengumpulkan semua data yang kelompoknya sama ke satu tempat. Contohnya,
+semua request berkode 200 dikumpulkan jadi satu sebelum dijumlahkan. Pada MapReduce tanpa
+combiner, ada 3,46 juta potongan data yang harus dikumpulkan seperti ini.
 
-Parsing hanya menyumbang sebagian kecil waktu job. Sebagian besar waktu mrjob habis untuk
-**biaya kerangka kerja**: menjalankan subproses untuk setiap task, serialisasi JSON setiap
-pasangan key-value, menulis dan membaca berkas antara, serta pengurutan. Combiner memang mengurangi
-data yang di-shuffle, tetapi di mrjob ia juga menambah langkah pengurutan dan pemrosesan tersendiri
-di setiap task map. Keuntungan bersihnya kecil (±8–15% di komputer uji) dan tidak terlihat di Colab
-yang hanya memiliki 2 inti.
+*Combiner* menjumlahkan sebagian lebih dulu sebelum shuffle. Ibaratnya penghitungan suara pemilu:
+setiap TPS menjumlahkan suaranya sendiri dulu, lalu hanya mengirim totalnya, bukan seluruh kertas
+suara. Dengan begitu data yang dikirim jauh lebih sedikit.
 
-Hal ini berbeda dengan Hadoop di cluster sungguhan, tempat shuffle melibatkan **pengiriman data
-lewat jaringan** antar-node. Di sana pengurangan data oleh combiner jauh lebih berharga. Pada
-eksperimen satu mesin ini, biaya jaringan tersebut tidak ada.
+Namun di Colab, MapReduce dengan combiner **tidak lebih cepat** (0,96–1,00×). Selisihnya hanya
+1–3 detik, masih dalam batas naik-turunnya hasil antar-percobaan.
 
-Spark menerapkan prinsip yang sama secara otomatis. Rencana eksekusi DataFrame menunjukkan
-`HashAggregate(... partial_count(1))` **sebelum** `Exchange hashpartitioning(...)` (shuffle),
-yang berarti agregasi parsial dilakukan sebelum data di-shuffle. Pada RDD, `reduceByKey`
-melakukan hal serupa (*map-side combine*).
+Untuk mencari tahu sebabnya, kami melakukan uji tambahan di komputer anggota (dibatasi 2 inti
+agar mirip Colab). Hasilnya, memotong-motong seluruh baris log hanya butuh ±4 detik, sedangkan
+satu job MapReduce butuh ±18 detik. Jadi sebagian besar waktu MapReduce habis untuk **biaya
+mengurus pekerjaannya sendiri**: menjalankan banyak program kecil, menulis dan membaca berkas
+sementara, serta mengurutkan data. Combiner memang mengurangi data yang di-shuffle, tetapi ia juga
+menambah langkah kerja baru, sehingga hasil bersihnya kecil.
 
-### 3.3 Pembuatan DAG vs Pembagian Map-Reduce
+Di cluster sungguhan yang terdiri dari banyak komputer, shuffle berarti **mengirim data lewat
+jaringan**, dan itu jauh lebih lambat. Di sana combiner akan jauh lebih bermanfaat. Spark sendiri
+sudah melakukan penjumlahan awal seperti combiner secara otomatis.
 
-**MapReduce** memaksa setiap pekerjaan berbentuk tetap: satu fungsi map, shuffle, satu fungsi
-reduce. Tiga analisis berarti tiga job terpisah, masing-masing membaca input dari awal. Pekerjaan
-yang lebih kompleks harus dirangkai sebagai beberapa job, dengan hasil antara ditulis ke disk di
-antara job.
+### 3.3 DAG vs Pembagian Map-Reduce
 
-**Spark** mencatat setiap transformasi (`map`, `filter`, `select`, `groupBy`) tanpa langsung
-menjalankannya (*lazy evaluation*). Saat *action* seperti `collect()` dipanggil, seluruh rangkaian
-disusun menjadi DAG, dioptimalkan, lalu dipecah menjadi *stage* dengan shuffle sebagai batasnya.
-Rencana fisik analisis `host` dari notebook memperlihatkan hal ini:
+**Intinya:** MapReduce bekerja dengan pola tetap, sedangkan Spark menyusun rencana kerja lengkap
+dulu sebelum mulai.
 
-```
-HashAggregate(keys=[host], functions=[count(1)])             ← stage 2: agregasi akhir
-+- Exchange hashpartitioning(host, 200)                      ← shuffle (batas stage)
-   +- HashAggregate(keys=[host], functions=[partial_count(1)]) ← stage 1: agregasi parsial
-      +- Project [regexp_extract(value, ..., 1) AS host]
-         +- Filter (RLIKE(value, ...))
-            +- FileScan text [value]
-```
+- **MapReduce** selalu memakai pola yang sama: *Map* (memotong dan memberi label), lalu *Shuffle*
+  (mengumpulkan), lalu *Reduce* (menjumlahkan). Setiap pertanyaan menjadi satu pekerjaan (*job*)
+  terpisah, sehingga tiga pertanyaan berarti tiga job yang masing-masing membaca data dari awal.
+- **Spark** tidak langsung bekerja ketika diberi perintah. Perintah-perintah itu dicatat dulu
+  (*lazy evaluation*). Baru ketika hasilnya diminta, Spark menyusun **rencana kerja lengkap** yang
+  disebut **DAG** (*Directed Acyclic Graph*), yaitu diagram langkah-langkah yang berurutan.
+  Karena melihat seluruh rencana sekaligus, Spark bisa mengatur urutan kerja yang paling efisien.
 
-Seluruh langkah di stage 1 dijalankan berantai per baris dalam satu task, tanpa hasil antara di
-disk. Pengoptimal Catalyst juga secara otomatis menyisipkan agregasi parsial. Fleksibilitas DAG ini
-pula yang memungkinkan `cache()` di skenario 2: Spark dapat "memotong" DAG di titik data yang
-di-cache, sesuatu yang tidak dapat dilakukan MapReduce antar-job.
+Gambar 3.1 memperlihatkan rencana kerja yang disusun Spark untuk pertanyaan `host`, diurutkan
+sesuai urutan pengerjaannya.
+
+![Rencana kerja Spark](gambar/rencana-spark.svg)
+
+*Gambar 3.1 — Rencana kerja (DAG) Spark untuk pertanyaan `host`, diringkas dari keluaran
+`explain()` di notebook.*
+
+Langkah 1 dan 2 dikerjakan berurutan di memori tanpa disimpan ke disk. Data baru dipindahkan pada
+langkah 3, dan saat itu jumlahnya sudah jauh berkurang karena sudah dijumlahkan sementara.
 
 ### 3.4 Spark RDD vs Spark DataFrame
 
-Pada analisis `host` dan `status`, DataFrame 13–17% lebih cepat daripada RDD. Pada RDD, fungsi
-parsing adalah fungsi Python (`lambda` dan `parse_line`), sehingga Spark harus menjalankan
-**Python worker** dan memindahkan setiap baris bolak-balik antara JVM dan Python (serialisasi).
-DataFrame memakai fungsi bawaan (`rlike`, `regexp_extract`, `groupBy`) yang dieksekusi langsung di
-JVM dan dioptimalkan oleh Catalyst dan Tungsten.
+**Intinya:** DataFrame biasanya lebih cepat, tetapi tidak selalu. Hasilnya bergantung pada cara
+kode ditulis.
 
-Sebaliknya, pada analisis `hour` DataFrame justru **58% lebih lambat** daripada RDD (31,2 vs 19,8
-detik). Uji pendukung (komputer anggota, Spark `local[2]`) menunjukkan penyebabnya adalah jumlah
-evaluasi regex per baris:
+- Pada **RDD**, proses memotong baris log ditulis dalam Python. Karena Spark sendiri berjalan di
+  Java, data harus diterjemahkan bolak-balik antara Java dan Python, dan itu memakan waktu.
+- Pada **DataFrame**, kami memakai fungsi bawaan Spark yang langsung berjalan di Java, tanpa
+  penerjemahan. Hasilnya, DataFrame **13–17% lebih cepat** pada pertanyaan `host` dan `status`.
 
-| Uji pendukung DataFrame (komputer anggota) | Waktu |
-|---|---|
-| `rlike` + 1 `regexp_extract` | 5,5 s |
-| `rlike` + 2 `regexp_extract` | 8,0 s |
-| `rlike` + 3 `regexp_extract` | 10,7 s |
-| `rlike` + 4 `regexp_extract` | 13,1 s |
-| Analisis `host` versi notebook (rlike + 1 extract) | 6,3 s |
-| Analisis `hour` versi notebook (rlike + extract jam + extract bytes) | 10,6 s |
-| Analisis `hour`, bytes diambil tanpa regex (`substring_index`) | 5,8 s |
+Namun pada pertanyaan `hour`, DataFrame justru **lebih lambat** (31,2 detik dibanding 19,8 detik
+untuk RDD). Uji tambahan kami menunjukkan penyebabnya: di kode DataFrame, pola pemotong baris
+(*regex*) dijalankan ulang untuk **setiap kolom** yang diambil. Pertanyaan `hour` mengambil dua
+kolom (jam dan ukuran data), dan kolom ukuran data ternyata terambil dua kali, sehingga regex
+dijalankan **empat kali** per baris (sekali untuk menyaring, tiga kali untuk mengambil kolom).
+Pada pertanyaan `host`, regex hanya dijalankan dua kali per baris. Setiap pemotongan
+tambahan menambah waktu sekitar 2,6 detik. Sementara itu, RDD memotong setiap baris **satu kali
+saja**. Ketika kolom ukuran data diambil dengan cara lain tanpa regex, waktu DataFrame turun
+setara dengan pertanyaan `host`.
 
-Setiap `regexp_extract` menjalankan ulang regex yang sama pada baris yang sama (±2,6 detik per
-tambahan). Analisis `hour` mengambil dua kolom (jam dan bytes), dan rencana eksekusinya
-memperlihatkan ekstraksi bytes muncul dua kali (di kondisi `CASE WHEN` dan di `cast`), sehingga
-waktunya setara dengan tiga kali ekstraksi. Ketika bytes diambil tanpa regex, waktunya turun ke
-level analisis `host`. Sementara itu, RDD mem-parsing setiap baris **sekali** dan langsung
-menghasilkan keempat kolom.
+Ini juga menjelaskan mengapa cache kurang membantu DataFrame (3.1): sebagian besar waktunya habis
+untuk pemotongan berulang tadi, dan pemotongan itu tetap terjadi saat data pertama kali disimpan
+ke cache.
 
-Temuan ini menunjukkan bahwa DataFrame tidak otomatis lebih cepat: performanya bergantung pada
-cara ekspresi ditulis, dan pengoptimal tidak menghilangkan evaluasi regex yang berulang dalam kasus
-ini. Implementasi `hour` di notebook bukan bentuk paling efisien; hal ini dicatat sebagai
-keterbatasan, dan perbaikannya (mengambil bytes tanpa regex) diperkirakan menyamakan waktunya
-dengan analisis lain.
+### 3.5 Pemakaian CPU dan RAM
 
-### 3.5 Penggunaan Sumber Daya
+**Intinya:** Spark lebih cepat, tetapi memakai RAM lebih banyak.
 
-**CPU.** Semua pendekatan memakai 149–167% dari maksimum 200%, artinya kedua inti hampir selalu
-sibuk. Spark RDD paling tinggi (164–167%) karena JVM dan Python worker bekerja bersamaan. Pada mesin
-2 inti, perbedaan kecepatan **tidak** berasal dari pemanfaatan inti yang lebih banyak, melainkan
-dari jumlah pekerjaan yang lebih sedikit per baris data.
+- **CPU:** semua cara memakai 149–167% dari maksimal 200%, artinya kedua inti CPU hampir selalu
+  sibuk. Jadi Spark lebih cepat bukan karena memakai CPU lebih banyak, melainkan karena
+  **pekerjaannya lebih sedikit**.
+- **RAM:** MapReduce memakai ±0,9 GB dan sangat stabil, karena sebagian besar data disimpan di
+  disk. Spark memakai **1,2–2,0 GB, kira-kira 1,4–2,2 kali lebih banyak**, karena data disimpan di
+  memori dan Java memesan memori dalam jumlah besar sejak awal.
+- **Garbage collection (GC):** Java membersihkan memori yang sudah tidak dipakai secara otomatis
+  dan pada waktu yang tidak tentu. Karena itu angka RAM Spark naik-turun antar-percobaan (selisih
+  hingga ±270 MB), sedangkan angka RAM MapReduce hampir tidak berubah.
+- **Waktu menyalakan Spark:** 26,1 detik, lebih lama daripada Spark menjawab satu pertanyaan.
+  Meski begitu, jika waktu ini ikut dihitung, Spark tetap lebih cepat (26,1 + 17,9 = 44,0 detik
+  dibanding 65,2 detik untuk MapReduce).
+- **Alat ukur dari spesifikasi kurang tepat:** fungsi `measure_execution` hanya mengukur program
+  Python, padahal Spark berjalan di program Java yang terpisah. Fungsi itu melaporkan Spark hanya
+  memakai **7,6 MB**, padahal sebenarnya lebih dari 1 GB. Karena itu kami membuat alat ukur yang
+  ikut menghitung program Java.
 
-**RAM.** MapReduce memakai ±0,9 GB dan sangat stabil (simpangan baku < 1 MB tanpa combiner),
-karena setiap subproses mrjob hanya memegang sebagian kecil data dan sisanya berada di berkas.
-Spark memakai **1,25–1,98 GB, sekitar 1,4–2,2 kali MapReduce**. JVM mengalokasikan *heap* (diatur
-4 GB untuk driver) dan jarang mengembalikan memori ke sistem operasi; besar RSS-nya bergantung pada
-kapan *garbage collector* (GC) berjalan. Hal ini terlihat dari simpangan baku RAM Spark yang besar
-(hingga 270 MB). Karena itu, perbedaan RAM antar-varian Spark (misalnya DataFrame dengan dan tanpa
-cache) tidak dapat ditafsirkan secara tegas dari tiga ulangan.
+### 3.6 Kemudahan Menulis Kode
 
-**Biaya awal Spark.** Menyalakan SparkSession memakan **26,1 detik**, lebih lama daripada satu
-analisis Spark itu sendiri (16–21 detik). Meski demikian, jika biaya awal ini dimasukkan, Spark
-DataFrame untuk analisis `host` (26,1 + 17,9 = 44,0 detik) tetap lebih cepat daripada MapReduce
-(65,2 detik). Efek pemanasan juga terlihat: eksekusi pertama Spark RDD untuk `host` saat validasi
-membutuhkan 27,8 detik, sedangkan rata-rata saat benchmark 20,6 detik.
-
-**Keterbatasan alat ukur spesifikasi.** Fungsi `measure_execution` pada spesifikasi hanya mengukur
-proses Python notebook (`os.getpid()`). Saat dipakai mengukur Spark DataFrame, fungsi ini
-melaporkan selisih memori hanya **7,64 MB**, padahal JVM Spark memakai lebih dari 1 GB. Oleh karena
-itu eksperimen ini memakai alat ukur yang menyertakan seluruh proses anak.
-
-### 3.6 Kompleksitas Pengembangan Kode
-
-| Aspek | MapReduce (mrjob) | Spark RDD | Spark DataFrame |
-|---|---|---|---|
-| Baris kode inti (tanpa komentar) | ±35 (+13 pembungkus runner) | ±11 | ±27 |
-| Gaya pemrograman | Kelas dengan method `mapper`/`combiner`/`reducer`, berkas skrip terpisah | Fungsional (`map`, `reduceByKey`) | Deklaratif mirip SQL (`select`, `groupBy`, `agg`) |
-| Menambah analisis | Opsi baru atau job baru | Satu fungsi pendek | Satu fungsi pendek |
-| Kemudahan debugging | Rendah: berjalan di subproses, log tersebar | Sedang | Sedang: `explain()` memperlihatkan rencana eksekusi |
-
-RDD paling ringkas karena dapat memakai ulang fungsi `parse_line` secara langsung. DataFrame
-sedikit lebih panjang karena setiap kolom diekstraksi dengan ekspresi tersendiri, tetapi kodenya
-deklaratif dan rencana eksekusinya dapat diperiksa. mrjob paling panjang dan kaku karena setiap
-pekerjaan harus dinyatakan dalam bentuk mapper–reducer.
+**Intinya:** Spark lebih ringkas dan lebih mudah dikembangkan. Spark RDD paling ringkas (±11 baris
+kode), disusul Spark DataFrame (±27 baris) yang gayanya mirip SQL. MapReduce paling panjang
+(±35 baris) karena setiap pekerjaan harus dipaksa ke bentuk mapper–reducer.
 
 ### 3.7 Keterbatasan Eksperimen
 
-1. Semua pendekatan berjalan di **satu mesin Colab dengan 2 inti**, bukan cluster. Biaya jaringan
-   saat shuffle, koordinasi antar-node, dan toleransi kegagalan tidak terwakili.
-2. "MapReduce" di sini adalah **mrjob runner `local` (Python murni)** yang meniru alur Hadoop,
-   bukan Hadoop MapReduce (Java) di atas HDFS dan YARN.
-3. Dataset (356 MB) masih muat di RAM satu mesin, sehingga keunggulan pemrosesan terdistribusi
-   untuk data yang jauh melebihi kapasitas satu mesin belum teramati.
-4. Implementasi DataFrame untuk analisis `hour` belum optimal (subbab 3.4).
-5. Pengukuran RAM berbasis RSS dengan sampel setiap 0,1 detik: proses yang sangat singkat bisa
-   tidak tercatat, dan memori bersama antar-proses dapat terhitung ganda.
-6. Uji pendukung dilakukan di komputer berbeda (bukan Colab); yang dibandingkan adalah proporsi,
-   bukan angka absolutnya.
+1. Semua berjalan di **satu komputer**, bukan banyak komputer. Biaya mengirim data lewat jaringan
+   tidak ikut terukur.
+2. MapReduce yang dipakai adalah **mrjob versi lokal** yang meniru cara kerja Hadoop, bukan Hadoop
+   sungguhan.
+3. Data 356 MB masih muat di memori satu komputer, sehingga belum menguji data yang sangat besar.
+4. Kode DataFrame untuk pertanyaan `hour` belum ditulis dengan cara paling efisien (lihat 3.4).
+5. Uji tambahan di 3.2 dan 3.4 dilakukan di komputer anggota, bukan di Colab. Yang dipakai adalah
+   polanya, bukan angkanya.
 
 ---
 
 ## Bab 4. Kesimpulan
 
-1. Ketiga pendekatan berhasil diimplementasikan dan menghasilkan output **identik** pada 3,46 juta
-   request log NASA.
-2. Pada lingkungan Colab 2 inti, **Spark 2,2–4,1 kali lebih cepat** daripada MapReduce (mrjob)
-   untuk setiap analisis, dan **hingga 5,9 kali lebih cepat** untuk tiga analisis sekaligus dengan
-   `cache()`. Sebagai gantinya, Spark memakai **RAM 1,4–2,2 kali lebih besar** dan membutuhkan
-   ±26 detik untuk dinyalakan.
-3. Keunggulan Spark berasal dari eksekusi berantai di memori dalam DAG, agregasi parsial otomatis
-   sebelum shuffle, dan kemampuan menyimpan data di memori untuk dipakai ulang. Kelemahan MapReduce
-   berasal dari biaya kerangka kerja (subproses, serialisasi, berkas antara), bukan dari parsing.
-4. Combiner tidak memberi keuntungan berarti pada eksperimen satu mesin ini; manfaatnya diperkirakan
-   lebih besar di cluster sungguhan, tempat shuffle melibatkan jaringan.
-5. DataFrame umumnya lebih cepat daripada RDD, tetapi tidak selalu: cara menulis ekspresi (misalnya
-   regex yang dievaluasi berulang) dapat membalik hasilnya.
+1. Ketiga cara berhasil dibuat dan memberi **jawaban yang sama persis** untuk 3,46 juta request.
+2. **Spark 2,2–4,1 kali lebih cepat** daripada MapReduce, dan **hingga 5,9 kali** jika ketiga
+   pertanyaan dijawab sekaligus dengan cache. Sebagai gantinya, Spark memakai **RAM sekitar 2 kali
+   lebih banyak** dan butuh ±26 detik untuk dinyalakan.
+3. Spark lebih cepat karena bekerja di memori, menyusun rencana kerja (DAG) sebelum mulai, dan
+   bisa menyimpan data untuk dipakai ulang (cache). MapReduce lambat terutama karena banyak menulis
+   dan membaca disk serta mengurus banyak program kecil.
+4. Combiner hampir tidak berpengaruh di satu komputer, tetapi diperkirakan bermanfaat di cluster
+   sungguhan.
+5. DataFrame biasanya lebih cepat daripada RDD, tetapi cara menulis kode bisa membalik hasilnya.
 
-**Rekomendasi pemilihan kerangka kerja pada kasus nyata:**
+**Rekomendasi pemilihan pada kasus nyata:**
 
-| Situasi | Rekomendasi | Alasan |
+| Situasi | Pilihan | Alasan |
 |---|---|---|
-| Analitik data terstruktur/semi-terstruktur, laporan rutin, query mirip SQL | **Spark DataFrame** | Ringkas, dioptimalkan otomatis; perhatikan ekspresi yang mahal |
-| Beberapa analisis atau algoritma iteratif pada data yang sama | **Spark + `cache()`** | Data dibaca dan di-parse sekali, dipakai berulang dari memori |
-| Logika pemrosesan khusus yang sulit dinyatakan sebagai operasi kolom | **Spark RDD** | Fleksibel memakai fungsi Python bebas |
-| Data sangat besar melebihi kapasitas memori cluster, job batch sekali jalan, cluster Hadoop sudah tersedia | **Hadoop MapReduce** | Hemat memori dan stabil; berbasis disk sehingga tidak dibatasi RAM |
-| Data berukuran ratusan MB dan cukup diolah sekali | Skrip biasa di satu mesin atau Spark mode lokal | Biaya awal dan biaya kerangka kerja terdistribusi bisa lebih besar daripada manfaatnya |
+| Analisis data berbentuk tabel, laporan rutin | **Spark DataFrame** | Ringkas dan cepat |
+| Banyak analisis pada data yang sama | **Spark + cache** | Data cukup diolah sekali |
+| Pengolahan khusus yang sulit ditulis sebagai tabel | **Spark RDD** | Bisa memakai fungsi Python bebas |
+| Data sangat besar melebihi kapasitas memori, RAM terbatas | **Hadoop MapReduce** | Hemat memori karena bekerja di disk |
+| Data kecil (ratusan MB) yang diolah sekali saja | Program Python biasa | Biaya menyalakan Spark atau MapReduce lebih besar daripada manfaatnya |
 
 ---
 
@@ -415,16 +343,12 @@ pekerjaan harus dinyatakan dalam bentuk mapper–reducer.
    & Stoica, I. (2012). Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory
    Cluster Computing. *Proceedings of the 9th USENIX Symposium on Networked Systems Design and
    Implementation (NSDI '12)*.
-3. Armbrust, M., Xin, R. S., Lian, C., Huai, Y., Liu, D., Bradley, J. K., Meng, X., Kaftan, T.,
-   Franklin, M. J., Ghodsi, A., & Zaharia, M. (2015). Spark SQL: Relational Data Processing in Spark.
-   *Proceedings of the 2015 ACM SIGMOD International Conference on Management of Data*.
-4. Apache Software Foundation. *Apache Spark Documentation* (RDD Programming Guide; Spark SQL,
-   DataFrames and Datasets Guide). https://spark.apache.org/docs/latest/
-5. Yelp. *mrjob Documentation*. https://mrjob.readthedocs.io/
-6. Internet Traffic Archive. *NASA-HTTP: Two months of HTTP requests to the NASA Kennedy Space
+3. Apache Software Foundation. *Apache Spark Documentation*. https://spark.apache.org/docs/latest/
+4. Yelp. *mrjob Documentation*. https://mrjob.readthedocs.io/
+5. Internet Traffic Archive. *NASA-HTTP: Two months of HTTP requests to the NASA Kennedy Space
    Center WWW server*. https://ita.ee.lbl.gov/html/contrib/NASA-HTTP.html
 
 ---
 
-**Lampiran:** notebook `Tugas2_Kelompok21_25.55.2927_EkaPutraKurnia.ipynb` (kode lengkap dan
-output eksekusi di Google Colab).
+**Lampiran:** notebook `Tugas2_Kelompok21_25.55.2927_EkaPutraKurnia.ipynb` (kode lengkap dan hasil
+eksekusi di Google Colab).

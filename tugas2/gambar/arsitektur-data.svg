@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 215" font-family="Liberation Sans, Arial, sans-serif">
+  <defs>
+    <marker id="panah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+  </defs>
+
+  <!-- Label fokus di atas kotak Pengolahan -->
+  <text x="632" y="20" text-anchor="middle" font-size="16" font-style="italic" fill="#1f4e8c">fokus eksperimen</text>
+
+  <!-- 1. Sumber data -->
+  <rect x="3" y="32" width="160" height="178" rx="8" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
+  <text x="83" y="62" text-anchor="middle" font-size="19" font-weight="bold">Sumber data</text>
+  <text x="83" y="112" text-anchor="middle" font-size="17">Log server</text>
+  <text x="83" y="134" text-anchor="middle" font-size="17">NASA</text>
+  <text x="83" y="156" text-anchor="middle" font-size="17">Jul–Agu 1995</text>
+
+  <!-- 2. Pengumpulan -->
+  <rect x="185" y="32" width="160" height="178" rx="8" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
+  <text x="265" y="62" text-anchor="middle" font-size="19" font-weight="bold">Pengumpulan</text>
+  <text x="265" y="112" text-anchor="middle" font-size="17">Unduh &amp;</text>
+  <text x="265" y="134" text-anchor="middle" font-size="17">ekstrak .gz</text>
+  <text x="265" y="156" text-anchor="middle" font-size="17">(37 MB)</text>
+
+  <!-- 3. Penyimpanan -->
+  <rect x="367" y="32" width="160" height="178" rx="8" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
+  <text x="447" y="62" text-anchor="middle" font-size="19" font-weight="bold">Penyimpanan</text>
+  <text x="447" y="112" text-anchor="middle" font-size="17">1 berkas teks</text>
+  <text x="447" y="134" text-anchor="middle" font-size="17">356 MB</text>
+  <text x="447" y="156" text-anchor="middle" font-size="17">(disk Colab)</text>
+
+  <!-- 4. Pengolahan (disorot) -->
+  <rect x="549" y="32" width="166" height="178" rx="8" fill="#dce8f7" stroke="#1f4e8c" stroke-width="2.5"/>
+  <text x="632" y="62" text-anchor="middle" font-size="19" font-weight="bold" fill="#1f4e8c">Pengolahan</text>
+  <rect x="558" y="78" width="148" height="36" rx="4" fill="#fff" stroke="#1f4e8c"/>
+  <text x="632" y="102" text-anchor="middle" font-size="16">MapReduce</text>
+  <rect x="558" y="120" width="148" height="36" rx="4" fill="#fff" stroke="#1f4e8c"/>
+  <text x="632" y="144" text-anchor="middle" font-size="16">Spark RDD</text>
+  <rect x="558" y="162" width="148" height="36" rx="4" fill="#fff" stroke="#1f4e8c"/>
+  <text x="632" y="186" text-anchor="middle" font-size="16">Spark DataFrame</text>
+
+  <!-- 5. Penyajian -->
+  <rect x="737" y="32" width="160" height="178" rx="8" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
+  <text x="817" y="62" text-anchor="middle" font-size="19" font-weight="bold">Penyajian</text>
+  <text x="817" y="112" text-anchor="middle" font-size="17">Tabel,</text>
+  <text x="817" y="134" text-anchor="middle" font-size="17">grafik,</text>
+  <text x="817" y="156" text-anchor="middle" font-size="17">berkas CSV</text>
+
+  <!-- Panah antar-kotak -->
+  <line x1="164" y1="121" x2="183" y2="121" stroke="#333" stroke-width="2" marker-end="url(#panah)"/>
+  <line x1="346" y1="121" x2="365" y2="121" stroke="#333" stroke-width="2" marker-end="url(#panah)"/>
+  <line x1="528" y1="121" x2="547" y2="121" stroke="#333" stroke-width="2" marker-end="url(#panah)"/>
+  <line x1="716" y1="121" x2="735" y2="121" stroke="#333" stroke-width="2" marker-end="url(#panah)"/>
+</svg>

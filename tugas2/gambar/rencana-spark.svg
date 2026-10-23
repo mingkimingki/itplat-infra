@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 252" font-family="Liberation Sans, Arial, sans-serif">
+  <defs>
+    <marker id="panah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+  </defs>
+
+  <!-- Langkah 1 -->
+  <rect x="3" y="3" width="660" height="44" rx="6" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
+  <text x="16" y="31" font-size="18"><tspan font-weight="bold">1.</tspan> Baca berkas → saring baris valid → ambil nama pengunjung</text>
+  <line x1="333" y1="48" x2="333" y2="66" stroke="#333" stroke-width="2" marker-end="url(#panah)"/>
+
+  <!-- Langkah 2 -->
+  <rect x="3" y="68" width="660" height="44" rx="6" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
+  <text x="16" y="96" font-size="18"><tspan font-weight="bold">2.</tspan> Jumlahkan sementara per pengunjung (seperti combiner)</text>
+  <line x1="333" y1="113" x2="333" y2="131" stroke="#333" stroke-width="2" marker-end="url(#panah)"/>
+
+  <!-- Langkah 3: shuffle (disorot) -->
+  <rect x="3" y="133" width="660" height="44" rx="6" fill="#fde9d9" stroke="#c0504d" stroke-width="2.5"/>
+  <text x="16" y="161" font-size="18"><tspan font-weight="bold">3. Exchange (shuffle):</tspan> kumpulkan data per pengunjung</text>
+  <line x1="333" y1="178" x2="333" y2="196" stroke="#333" stroke-width="2" marker-end="url(#panah)"/>
+
+  <!-- Langkah 4 -->
+  <rect x="3" y="198" width="660" height="44" rx="6" fill="#f4f4f4" stroke="#333" stroke-width="1.5"/>
+  <text x="16" y="226" font-size="18"><tspan font-weight="bold">4.</tspan> Jumlahkan total per pengunjung → hasil akhir</text>
+
+  <!-- Penanda stage -->
+  <path d="M676,3 h12 v109 h-12" fill="none" stroke="#1f4e8c" stroke-width="2"/>
+  <text x="700" y="40" font-size="18" font-weight="bold" fill="#1f4e8c">Stage 1</text>
+  <text x="700" y="64" font-size="16" fill="#1f4e8c">berantai di memori,</text>
+  <text x="700" y="85" font-size="16" fill="#1f4e8c">tanpa simpan</text>
+  <text x="700" y="106" font-size="16" fill="#1f4e8c">ke disk</text>
+
+  <text x="700" y="161" font-size="16" fill="#c0504d">batas antar-stage</text>
+
+  <path d="M676,198 h12 v44 h-12" fill="none" stroke="#1f4e8c" stroke-width="2"/>
+  <text x="700" y="226" font-size="18" font-weight="bold" fill="#1f4e8c">Stage 2</text>
+</svg>
