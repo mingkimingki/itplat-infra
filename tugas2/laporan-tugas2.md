@@ -1,5 +1,5 @@
-# Laporan Tugas 2
-## Implementasi Pipeline Pemrosesan Batch dengan Hadoop MapReduce dan Apache Spark
+# Laporan Analisis Komparatif
+## Tugas 2<br>Implementasi Pipeline Pemrosesan Batch dengan Hadoop MapReduce dan Apache Spark
 
 ![Logo Universitas AMIKOM Yogyakarta](logo-amikom.png)
 
