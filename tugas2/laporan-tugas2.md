@@ -25,7 +25,7 @@
 
 Hadoop MapReduce dan Apache Spark sama-sama dipakai untuk mengolah data dalam jumlah besar
 sekaligus (*batch processing*). Perbedaan utamanya: MapReduce menyimpan hasil setiap tahap ke
-**disk**, sedangkan Spark sebisa mungkin menyimpannya di **memori (RAM)**.
+**disk**, sedangkan Spark sebisa mungkin menyimpannya di **memori (RAM)** [1], [2].
 
 Dalam eksperimen ini kami mengolah data yang sama dengan tiga cara: **MapReduce** (memakai
 library mrjob), **Spark RDD**, dan **Spark DataFrame**. Tujuannya:
@@ -50,7 +50,7 @@ yang sama. Jadi eksperimen ini adalah **simulasi** pengolahan terdistribusi.
 ### 1.3 Dataset
 
 Kami memakai **NASA HTTP Access Logs**, yaitu catatan setiap kunjungan ke situs web NASA selama
-Juli–Agustus 1995. Ukurannya **356 MB** dengan **3.461.613 baris**. Satu baris berisi satu
+Juli–Agustus 1995 [5]. Ukurannya **356 MB** dengan **3.461.613 baris**. Satu baris berisi satu
 kunjungan (*request*):
 
 ```
@@ -90,7 +90,7 @@ tidak dihitung.
 
 **Lingkungan:** Google Colab, 2 inti CPU, RAM 12,7 GB, Python 3.13, Spark 4.0.4, Java 17,
 mrjob 0.7.4. (Spesifikasi menyebut Java 8, tetapi Spark versi 4 hanya bisa berjalan dengan Java 17
-ke atas.)
+ke atas [3].)
 
 ---
 
@@ -177,15 +177,15 @@ Tabel 2.2 — Rata-rata dari 3 kali percobaan.
 daripada mengakses memori.
 
 - **MapReduce** menyimpan hasil setiap tahap ke berkas di disk, lalu tahap berikutnya membaca
-  berkas itu lagi. Bayangkan seseorang yang setiap selesai satu langkah menulis hasilnya di kertas,
+  berkas itu lagi [1]. Bayangkan seseorang yang setiap selesai satu langkah menulis hasilnya di kertas,
   lalu membaca kertas itu sebelum langkah berikutnya.
 - **Spark** meneruskan hasil dari satu langkah ke langkah berikutnya langsung di memori, tanpa
-  mencatatnya dulu. Cara ini disebut *pipelining*.
+  mencatatnya dulu. Cara ini disebut *pipelining* [2].
 
 Akibatnya, pada skenario 1 Spark **2,2–4,1 kali lebih cepat** daripada MapReduce.
 
 **Cache** memperlihatkan keunggulan memori dengan lebih jelas. *Cache* artinya menyimpan data yang
-sudah diolah di memori agar bisa dipakai lagi tanpa diolah ulang.
+sudah diolah di memori agar bisa dipakai lagi tanpa diolah ulang [2].
 
 - Pada skenario 2, MapReduce butuh **203,7 detik**, kira-kira 3 kali waktu satu pertanyaan. Ini
   karena untuk setiap pertanyaan, berkas 356 MB dibaca dan dipotong-potong lagi dari awal.
@@ -204,7 +204,7 @@ berpengaruh.
 semua request berkode 200 dikumpulkan jadi satu sebelum dijumlahkan. Pada MapReduce tanpa
 combiner, ada 3,46 juta potongan data yang harus dikumpulkan seperti ini.
 
-*Combiner* menjumlahkan sebagian lebih dulu sebelum shuffle. Ibaratnya penghitungan suara pemilu:
+*Combiner* menjumlahkan sebagian lebih dulu sebelum shuffle [1], [4]. Ibaratnya penghitungan suara pemilu:
 setiap TPS menjumlahkan suaranya sendiri dulu, lalu hanya mengirim totalnya, bukan seluruh kertas
 suara. Dengan begitu data yang dikirim jauh lebih sedikit.
 
@@ -228,11 +228,11 @@ sudah melakukan penjumlahan awal seperti combiner secara otomatis.
 dulu sebelum mulai.
 
 - **MapReduce** selalu memakai pola yang sama: *Map* (memotong dan memberi label), lalu *Shuffle*
-  (mengumpulkan), lalu *Reduce* (menjumlahkan). Setiap pertanyaan menjadi satu pekerjaan (*job*)
+  (mengumpulkan), lalu *Reduce* (menjumlahkan) [1]. Setiap pertanyaan menjadi satu pekerjaan (*job*)
   terpisah, sehingga tiga pertanyaan berarti tiga job yang masing-masing membaca data dari awal.
 - **Spark** tidak langsung bekerja ketika diberi perintah. Perintah-perintah itu dicatat dulu
   (*lazy evaluation*). Baru ketika hasilnya diminta, Spark menyusun **rencana kerja lengkap** yang
-  disebut **DAG** (*Directed Acyclic Graph*), yaitu diagram langkah-langkah yang berurutan.
+  disebut **DAG** (*Directed Acyclic Graph*), yaitu diagram langkah-langkah yang berurutan [2], [3].
   Karena melihat seluruh rencana sekaligus, Spark bisa mengatur urutan kerja yang paling efisien.
 
 Gambar 3.1 memperlihatkan rencana kerja yang disusun Spark untuk pertanyaan `host`, diurutkan
@@ -252,7 +252,7 @@ langkah 3, dan saat itu jumlahnya sudah jauh berkurang karena sudah dijumlahkan 
 kode ditulis.
 
 - Pada **RDD**, proses memotong baris log ditulis dalam Python. Karena Spark sendiri berjalan di
-  Java, data harus diterjemahkan bolak-balik antara Java dan Python, dan itu memakan waktu.
+  Java, data harus diterjemahkan bolak-balik antara Java dan Python, dan itu memakan waktu [3].
 - Pada **DataFrame**, kami memakai fungsi bawaan Spark yang langsung berjalan di Java, tanpa
   penerjemahan. Hasilnya, DataFrame **13–17% lebih cepat** pada pertanyaan `host` dan `status`.
 
@@ -302,7 +302,7 @@ kode), disusul Spark DataFrame (±27 baris) yang gayanya mirip SQL. MapReduce pa
 1. Semua berjalan di **satu komputer**, bukan banyak komputer. Biaya mengirim data lewat jaringan
    tidak ikut terukur.
 2. MapReduce yang dipakai adalah **mrjob versi lokal** yang meniru cara kerja Hadoop, bukan Hadoop
-   sungguhan.
+   sungguhan [4].
 3. Data 356 MB masih muat di memori satu komputer, sehingga belum menguji data yang sangat besar.
 4. Kode DataFrame untuk pertanyaan `hour` belum ditulis dengan cara paling efisien (lihat 3.4).
 5. Uji tambahan di 3.2 dan 3.4 dilakukan di komputer anggota, bukan di Colab. Yang dipakai adalah
