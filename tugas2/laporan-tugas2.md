@@ -3,7 +3,7 @@
 
 ![Logo Universitas AMIKOM Yogyakarta](logo-amikom.png)
 
-**Mata Kuliah:** Pemrosesan Data Terdistribusi / Big Data Analytics
+**Mata Kuliah:** IT Platform and Infrastructure
 **Dosen Pengampu:** Hanafi, S.Kom., M.Eng., Ph.D.
 **Kelompok 21**
 

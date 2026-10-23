@@ -22,7 +22,7 @@ def code(text):
 md(r"""
 # Tugas 2: Pipeline Pemrosesan Batch dengan Hadoop MapReduce dan Spark
 
-**Mata kuliah:** Pemrosesan Data Terdistribusi / Big Data Analytics
+**Mata kuliah:** IT Platform and Infrastructure
 **Kelompok 21**
 
 | No | Nama | NIM |

@@ -15,8 +15,10 @@ CSS = """
   size: A4;
   margin: 2.5cm;
   @bottom-center { content: counter(page); font-family: 'Liberation Serif'; font-size: 11pt; }
+  @top-right { content: "IT Platform and Infrastructure – Laporan Tugas 2 Kelompok 21";
+               font-family: 'Liberation Serif'; font-size: 9pt; font-style: italic; color: #444; }
 }
-@page :first { @bottom-center { content: none; } }
+@page :first { @bottom-center { content: none; } @top-right { content: none; } }
 body { font-family: 'Liberation Serif', 'Times New Roman', serif; font-size: 12pt;
        line-height: 1.15; text-align: justify; color: #000; }
 h1, h2, h3 { text-align: left; break-after: avoid-page; }
