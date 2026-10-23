@@ -112,20 +112,20 @@ Jadi perbedaan kecepatan di bawah bukan karena salah satu cara menghitung lebih 
 
 Tabel 2.1 — Rata-rata dari 3 kali percobaan. CPU paling tinggi 200% karena ada 2 inti.
 
-| Pertanyaan | Cara | Waktu (detik) | Lebih cepat dari MapReduce | CPU (%) | RAM tertinggi (MB) |
+| Pertanyaan | Cara | Waktu (detik) | Dibanding MapReduce | CPU (%) | RAM tertinggi (MB) |
 |---|---|---|---|---|---|
 | host | MapReduce | 65,2 | – | 154 | 888 |
-| | MapReduce + combiner | 68,2 | 0,96× | 154 | 953 |
-| | Spark RDD | 20,6 | 3,2× | 167 | 1.476 |
-| | Spark DataFrame | **17,9** | **3,6×** | 152 | 1.781 |
+| | MapReduce + combiner | 68,2 | 1,05× lebih lambat | 154 | 953 |
+| | Spark RDD | 20,6 | 3,2× lebih cepat | 167 | 1.476 |
+| | Spark DataFrame | **17,9** | **3,6× lebih cepat** | 152 | 1.781 |
 | status | MapReduce | 66,2 | – | 149 | 903 |
-| | MapReduce + combiner | 68,8 | 0,96× | 157 | 941 |
-| | Spark RDD | 19,2 | 3,5× | 164 | 1.494 |
-| | Spark DataFrame | **16,0** | **4,1×** | 153 | 1.644 |
+| | MapReduce + combiner | 68,8 | 1,04× lebih lambat | 157 | 941 |
+| | Spark RDD | 19,2 | 3,5× lebih cepat | 164 | 1.494 |
+| | Spark DataFrame | **16,0** | **4,1× lebih cepat** | 153 | 1.644 |
 | hour | MapReduce | 69,6 | – | 156 | 901 |
-| | MapReduce + combiner | 69,9 | 1,00× | 157 | 940 |
-| | Spark RDD | **19,8** | **3,5×** | 165 | 1.249 |
-| | Spark DataFrame | 31,2 | 2,2× | 155 | 1.458 |
+| | MapReduce + combiner | 69,9 | sama cepat | 157 | 940 |
+| | Spark RDD | **19,8** | **3,5× lebih cepat** | 165 | 1.249 |
+| | Spark DataFrame | 31,2 | 2,2× lebih cepat | 155 | 1.458 |
 
 ![Skenario 1](hasil/skenario1.png)
 
@@ -139,14 +139,14 @@ dimasukkan ke tabel.
 
 Tabel 2.2 — Rata-rata dari 3 kali percobaan.
 
-| Cara | Waktu (detik) | Lebih cepat dari MapReduce | RAM tertinggi (MB) |
+| Cara | Waktu (detik) | Dibanding MapReduce | RAM tertinggi (MB) |
 |---|---|---|---|
 | MapReduce (3 job) | 203,7 | – | 897 |
-| MapReduce + combiner (3 job) | 202,1 | 1,0× | 959 |
-| Spark RDD tanpa cache | 58,2 | 3,5× | 1.480 |
-| Spark RDD + cache | **34,4** | **5,9×** | 1.634 |
-| Spark DataFrame tanpa cache | 66,0 | 3,1× | 1.977 |
-| Spark DataFrame + cache | 57,7 | 3,5× | 1.714 |
+| MapReduce + combiner (3 job) | 202,1 | sama cepat | 959 |
+| Spark RDD tanpa cache | 58,2 | 3,5× lebih cepat | 1.480 |
+| Spark RDD + cache | **34,4** | **5,9× lebih cepat** | 1.634 |
+| Spark DataFrame tanpa cache | 66,0 | 3,1× lebih cepat | 1.977 |
+| Spark DataFrame + cache | 57,7 | 3,5× lebih cepat | 1.714 |
 
 ![Skenario 2](hasil/skenario2.png)
 
@@ -208,7 +208,7 @@ combiner, ada 3,46 juta potongan data yang harus dikumpulkan seperti ini.
 setiap TPS menjumlahkan suaranya sendiri dulu, lalu hanya mengirim totalnya, bukan seluruh kertas
 suara. Dengan begitu data yang dikirim jauh lebih sedikit.
 
-Namun di Colab, MapReduce dengan combiner **tidak lebih cepat** (0,96–1,00×). Selisihnya hanya
+Namun di Colab, MapReduce dengan combiner **tidak lebih cepat** (sama cepat sampai 1,05× lebih lambat). Selisihnya hanya
 1–3 detik, masih dalam batas naik-turunnya hasil antar-percobaan.
 
 Untuk mencari tahu sebabnya, kami melakukan uji tambahan di komputer anggota (dibatasi 2 inti
