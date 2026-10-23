@@ -338,12 +338,12 @@ kode), disusul Spark DataFrame (±27 baris) yang gayanya mirip SQL. MapReduce pa
 ## Daftar Pustaka
 
 1. Dean, J., & Ghemawat, S. (2004). MapReduce: Simplified Data Processing on Large Clusters.
-   *Proceedings of the 6th Symposium on Operating Systems Design and Implementation (OSDI '04)*.
+   *Proceedings of the 6th Symposium on Operating Systems Design and Implementation (OSDI '04)*, San Francisco, hlm. 137–150.
 2. Zaharia, M., Chowdhury, M., Das, T., Dave, A., Ma, J., McCauley, M., Franklin, M. J., Shenker, S.,
    & Stoica, I. (2012). Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory
    Cluster Computing. *Proceedings of the 9th USENIX Symposium on Networked Systems Design and
-   Implementation (NSDI '12)*.
-3. Apache Software Foundation. *Apache Spark Documentation*. https://spark.apache.org/docs/latest/
+   Implementation (NSDI '12)*, hlm. 15–28.
+3. Apache Software Foundation. *Apache Spark 4.0.0 Documentation*. https://spark.apache.org/docs/4.0.0/
 4. Yelp. *mrjob Documentation*. https://mrjob.readthedocs.io/
 5. Internet Traffic Archive. *NASA-HTTP: Two months of HTTP requests to the NASA Kennedy Space
    Center WWW server*. https://ita.ee.lbl.gov/html/contrib/NASA-HTTP.html
